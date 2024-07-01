@@ -85,21 +85,29 @@ router.post('/manual/register', [
 })
 
 
-// Route 3: isVerified user ?
-router.post('/is-verified', async (req, res) => {
+// Route 3: Is authentic user
+router.post('/get-user', async (req, res) => {
 
     try {
 
         let { authToken } = req.cookies
 
-        let data = jwt.verify(authToken, process.env.JWT_SECRET);
-        let user = await UserSchema.findOne({ _id: data.id }).select("-password")
+        if (!authToken) {
+            return res.status(400).json("Token Not Found")
+        }
 
-        return res.status(200).json({ isVerified: user?.isVerified })
+        let data = jwt.verify(authToken, process.env.JWT_SECRET);
+        let user = await UserSchema.findOne({ _id: data.id }).select("-password -recoveryToken")
+
+        if (!user) {
+            return res.status(404).json("User not found")
+        } else {
+            return res.status(200).json(user)
+        }
 
     } catch (error) {
-        console.log("IS_VERIFIED_ERROR")
-        return res.status(500).json("Server Error")
+        console.log("IS_AUTHENTIC_ERROR", error)
+        return res.status(500).json('IS_AUTHENTIC_ERROR')
     }
 
 })

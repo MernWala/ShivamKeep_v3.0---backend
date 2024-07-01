@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import connectToDB from './middleware/ConnectToDB.js';
 import auth from './routes/auth.js';
+import notes from './routes/notes.js';
 import cookieParser from 'cookie-parser';
 
 dotenv.config();
@@ -58,6 +59,11 @@ app.get('/', (req, res) => {
 
 // =============================================== Authentication API Start ===============================================
 app.use('/api/auth/', auth);
+// =============================================== Authentication API Start ===============================================
+
+
+// =============================================== Authentication API Start ===============================================
+app.use('/api/notes/', notes);
 // =============================================== Authentication API Start ===============================================
 
 

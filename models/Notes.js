@@ -6,9 +6,21 @@ const NotesSchema = new Schema({
         ref: 'User',
         required: true,
     },
+    title: {
+        type: String,
+        default: ''
+    },
     notes: {
         type: String,
         required: true
+    },
+    tags: {
+        type: [String],
+        default: []
+    },
+    shared: {
+        type: Boolean,
+        default: false
     }
 }, { timestamps: true });
 
