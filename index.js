@@ -5,6 +5,8 @@ import connectToDB from './middleware/ConnectToDB.js';
 import auth from './routes/auth.js';
 import notes from './routes/notes.js';
 import cookieParser from 'cookie-parser';
+import path from 'path'
+import { fileURLToPath } from 'url';
 
 dotenv.config();
 
@@ -14,6 +16,18 @@ const whitelist = ['http://localhost:3000'];
 
 app.use(express.json());
 app.use(cookieParser());
+
+// ==================================================== Middleware for static file ==============================================
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Get directory name for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Serve static files from the 'uploads' directory
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// ==================================================== Middleware for static file ==============================================
 
 
 // =============================================== DB Middleware ===============================================

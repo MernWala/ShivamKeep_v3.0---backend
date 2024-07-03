@@ -14,9 +14,12 @@ const UserSchema = new Schema({
         type: String,
         required: true
     },
+    picture: {
+        type: String,
+        default: ''
+    },
     isVerified: {
         type: Boolean,
-        required: true,
         default: false
     },
     recoveryToken: {

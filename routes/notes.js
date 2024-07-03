@@ -151,7 +151,7 @@ router.put('/', [
 
         if (user) {
 
-            let note = await NotesSchema.findById(req.body.id)
+            let note = await NotesSchema.findById(_id)
 
             if (note?.user.equals(user?._id)) {
                 await NotesSchema.findByIdAndUpdate(
@@ -164,9 +164,7 @@ router.put('/', [
                 return res.status(200).json(updated)
 
             } else {
-
                 return res.status(400).json("Unauthorize")
-
             }
 
         } else {
