@@ -4,6 +4,7 @@ import cors from 'cors';
 import connectToDB from './middleware/ConnectToDB.js';
 import auth from './routes/auth.js';
 import notes from './routes/notes.js';
+import recover from './routes/recover.js';
 import cookieParser from 'cookie-parser';
 import path from 'path'
 import { fileURLToPath } from 'url';
@@ -78,6 +79,11 @@ app.use('/api/auth/', auth);
 
 // =============================================== Authentication API Start ===============================================
 app.use('/api/notes/', notes);
+// =============================================== Authentication API Start ===============================================
+
+
+// =============================================== Authentication API Start ===============================================
+app.use('/api/recover/', recover);
 // =============================================== Authentication API Start ===============================================
 
 
