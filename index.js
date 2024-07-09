@@ -4,10 +4,13 @@ import cors from 'cors';
 import connectToDB from './middleware/ConnectToDB.js';
 import auth from './routes/auth.js';
 import notes from './routes/notes.js';
+import social from './routes/social.js';
 import recover from './routes/recover.js';
 import cookieParser from 'cookie-parser';
 import path from 'path'
 import { fileURLToPath } from 'url';
+import passport from 'passport';
+import session from 'express-session';
 
 dotenv.config();
 
@@ -64,6 +67,18 @@ app.use((req, res, next) => {
 // =============================================== CORS setup Ends from here ===============================================
 
 
+// =============================================== Middleware for github authentication ====================================
+app.use(session({
+    secret: process.env.SESSION_SECRET,
+    resave: false,
+    saveUninitialized: true
+}));
+
+app.use(passport.initialize());
+app.use(passport.session());
+// =============================================== Middleware for github authentication ====================================
+
+
 
 // =============================================== Default API call Start ===============================================
 app.get('/', (req, res) => {
@@ -74,17 +89,22 @@ app.get('/', (req, res) => {
 
 // =============================================== Authentication API Start ===============================================
 app.use('/api/auth/', auth);
-// =============================================== Authentication API Start ===============================================
+// =============================================== Authentication API End ===============================================
 
 
-// =============================================== Authentication API Start ===============================================
+// =============================================== Notes API Start ===============================================
 app.use('/api/notes/', notes);
-// =============================================== Authentication API Start ===============================================
+// =============================================== Notes API End ===============================================
 
 
-// =============================================== Authentication API Start ===============================================
+// =============================================== Account Recovery API Start ===============================================
 app.use('/api/recover/', recover);
-// =============================================== Authentication API Start ===============================================
+// =============================================== Account Recovery API End ===============================================
+
+
+// =============================================== OAuth authentication API Start ===============================================
+app.use('/api/auth/social', social);
+// =============================================== OAuth authentication API End ===============================================
 
 
 app.listen(PORT, () => {

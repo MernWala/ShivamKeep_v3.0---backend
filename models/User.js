@@ -25,6 +25,10 @@ const UserSchema = new Schema({
     recoveryToken: {
         type: String,
         default: null
+    },
+    githubId: {
+        type: String,
+        default: null        
     }
 }, { timestamps: true });
 

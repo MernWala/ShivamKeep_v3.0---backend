@@ -1,5 +1,3 @@
-// TODO - implement otp verify for account verification
-
 import express from 'express'
 import { body } from 'express-validator'
 import BodyValidator from '../middleware/BodyValidator.js'
