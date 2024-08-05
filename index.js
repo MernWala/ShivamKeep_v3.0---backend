@@ -4,7 +4,6 @@ import cors from 'cors';
 import connectToDB from './middleware/ConnectToDB.js';
 import auth from './routes/auth.js';
 import notes from './routes/notes.js';
-import social from './routes/social.js';
 import recover from './routes/recover.js';
 import cookieParser from 'cookie-parser';
 import path from 'path'
