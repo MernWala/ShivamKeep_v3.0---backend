@@ -89,7 +89,7 @@ router.post('/change-pass', [
         const newToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '24h' })
         res.cookie('authToken', newToken, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
+            secure: false,
             sameSite: 'None',
         })
 
