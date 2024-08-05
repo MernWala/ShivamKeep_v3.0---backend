@@ -8,8 +8,6 @@ import recover from './routes/recover.js';
 import cookieParser from 'cookie-parser';
 import path from 'path'
 import { fileURLToPath } from 'url';
-import passport from 'passport';
-import session from 'express-session';
 
 dotenv.config();
 
@@ -64,19 +62,6 @@ app.use((req, res, next) => {
     next()
 })
 // =============================================== CORS setup Ends from here ===============================================
-
-
-// =============================================== Middleware for github authentication ====================================
-app.use(session({
-    secret: process.env.SESSION_SECRET,
-    resave: false,
-    saveUninitialized: true
-}));
-
-app.use(passport.initialize());
-app.use(passport.session());
-// =============================================== Middleware for github authentication ====================================
-
 
 
 // =============================================== Default API call Start ===============================================
