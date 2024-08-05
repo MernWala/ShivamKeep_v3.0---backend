@@ -90,7 +90,7 @@ router.post('/change-pass', [
         res.cookie('authToken', newToken, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
+            sameSite: 'None',
         })
 
         return res.status(200).json("Password Changed")

@@ -62,7 +62,7 @@ router.post('/manual/login', [
         res.cookie('authToken', token, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
+            sameSite: 'None',
         })
 
         return res.status(200).json("Login Success")
@@ -104,7 +104,7 @@ router.post('/manual/register', [
         res.cookie('authToken', token, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
-            sameSite: 'strict',
+            sameSite: 'None',
         })
 
         return res.status(201).json("Register Success")
@@ -150,7 +150,7 @@ router.post('/logout', (req, res) => {
     res.clearCookie('authToken', {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        sameSite: 'None',
     });
     return res.status(200).json("Logout Success");
 });
@@ -315,7 +315,7 @@ router.post('/match-otp', [
                 res.cookie('authToken', token, {
                     httpOnly: true,
                     secure: process.env.NODE_ENV === 'production',
-                    sameSite: 'strict',
+                    sameSite: 'None',
                 })
 
                 return res.status(200).json("Status Updated")
