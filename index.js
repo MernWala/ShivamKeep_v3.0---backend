@@ -102,11 +102,6 @@ app.use('/api/recover/', recover);
 // =============================================== Account Recovery API End ===============================================
 
 
-// =============================================== OAuth authentication API Start ===============================================
-app.use('/api/auth/social', social);
-// =============================================== OAuth authentication API End ===============================================
-
-
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });
