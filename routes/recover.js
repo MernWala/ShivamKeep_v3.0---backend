@@ -53,7 +53,10 @@ router.post('/', [
             from: process.env.EMAIL_USER,
             to: email,
             subject: 'Account Recovery: Shivam Keep',
-            text: `Your account recovery link is <br><br>${newUrl}`,
+            html: `
+                Your account recovery link is <br />
+                <a href="${newUrl}" target="_blank" rel="noopener noreferrer">${newUrl}</a>
+            `,
         })
 
         return res.status(201).json("Mail has been sent")
