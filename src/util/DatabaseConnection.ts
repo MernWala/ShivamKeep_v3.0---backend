@@ -1,15 +1,18 @@
 import mongoose from "mongoose";
 import { config } from "../../config";
+import { AppLogger } from "./AppLogger";
 
 class DatabaseConnection {
     private static instance: DatabaseConnection;
     private isConnected: boolean = false;
+    private logger: AppLogger
 
     private readonly MAX_RETRIES = 5;
     private readonly RETRY_DELAY_MS = 5000;
 
     private constructor() {
         this.registerEventListeners();
+        this.logger = new AppLogger("DatabaseConnection");
     }
 
     public static getInstance(): DatabaseConnection {
@@ -21,7 +24,7 @@ class DatabaseConnection {
 
     public async connect(): Promise<void> {
         if (this.isConnected) {
-            console.log("[Database] Already connected, skipping reconnection.");
+            this.logger.log("Already connected, skipping reconnection.");
             return;
         }
 
@@ -38,17 +41,14 @@ class DatabaseConnection {
                 });
 
                 this.isConnected = true;
-                console.log("[Database] Connected successfully.");
+                this.logger.log("Connected successfully.");
                 return;
             } catch (error) {
                 attempt++;
-                console.error(
-                    `[Database] Connection attempt ${attempt}/${this.MAX_RETRIES} failed:`,
-                    error instanceof Error ? error.message : error
-                );
+                this.logger.error(`Connection attempt ${attempt}/${this.MAX_RETRIES} failed:`, error instanceof Error ? error.message : error);
 
                 if (attempt >= this.MAX_RETRIES) {
-                    console.error("[Database] Max retries reached. Exiting process.");
+                    this.logger.error("Max retries reached. Exiting process.");
                     process.exit(1);
                 }
 
@@ -63,28 +63,28 @@ class DatabaseConnection {
         try {
             await mongoose.disconnect();
             this.isConnected = false;
-            console.log("[Database] Disconnected gracefully.");
+            this.logger.log("Disconnected gracefully.");
         } catch (error) {
-            console.error("[Database] Error during disconnection:", error);
+            this.logger.error("Error during disconnection:", error);
         }
     }
 
     private registerEventListeners(): void {
         mongoose.connection.on("connected", () => {
-            console.log("[Database] Mongoose default connection open.");
+            this.logger.log("Mongoose default connection open.");
         });
 
         mongoose.connection.on("error", (err) => {
-            console.error("[Database] Mongoose connection error:", err);
+            this.logger.error("Mongoose connection error:", err);
         });
 
         mongoose.connection.on("disconnected", () => {
-            console.warn("[Database] Mongoose connection disconnected.");
+            this.logger.log("Mongoose connection disconnected.");
             this.isConnected = false;
         });
 
         mongoose.connection.on("reconnected", () => {
-            console.log("[Database] Mongoose reconnected.");
+            this.logger.log("Mongoose reconnected.");
             this.isConnected = true;
         });
 
@@ -110,7 +110,7 @@ class DatabaseConnection {
 
     public async ensureConnection(): Promise<void> {
         if (!this.isConnected) {
-            console.warn("[Database] Connection lost. Attempting to reconnect...");
+            this.logger.log("Connection lost. Attempting to reconnect...");
             await this.connect();
         }
     }
