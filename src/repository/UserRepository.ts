@@ -3,8 +3,6 @@ import User, { IUser } from "../models/User";
 import bcrypt from "bcryptjs";
 import jwt, { type SignOptions } from "jsonwebtoken";
 import { config } from "../../config";
-import { sendMail } from "../util/NodemailerClient";
-import mongoose from "mongoose";
 
 export class UserRepository {
     private logger: AppLogger;
@@ -15,8 +13,7 @@ export class UserRepository {
 
     private async createAndRefreshToken(email: string): Promise<string> {
         try {
-            const options: SignOptions = { expiresIn: config.jwt.expires as SignOptions['expiresIn'] };
-            const token = jwt.sign({ email }, config.jwt.secret, options);
+            const token = this.createTokenViaEmail(email);
             await User.findOneAndUpdate({ email }, { $set: { sessionKey: token } });
             return token;
         } catch (error) {
@@ -26,33 +23,30 @@ export class UserRepository {
         }
     }
 
-    async createUser(email: string, name: string, password: string): Promise<IUser | null> {
+    private createTokenViaEmail(email: string, expiresIn: string | null = null): string {
+        const options: SignOptions = { expiresIn: (expiresIn ?? config.jwt.expires) as SignOptions['expiresIn'] };
+        return jwt.sign({ email }, config.jwt.secret, options);
+    }
+
+    async createUser(email: string, name: string, password: string): Promise<[IUser | null, string | null]> {
         try {
             const data = await User.findOne({ email });
             if (data) {
                 this.logger.log("User already exist");
-                return null;
+                return [null, null];
             }
 
             const hashedPassword = await bcrypt.hash(password, 10);
-            const options: SignOptions = { expiresIn: config.jwt.expires as SignOptions['expiresIn'] };
-            const token = jwt.sign({ email }, config.jwt.secret, options);
+            const token = this.createTokenViaEmail(email);
 
-            const newData = await new User({
+            const newUser = await new User({
                 email,
                 name,
                 isVerified: false,
                 password: hashedPassword,
-                recoveryToken: token,
             }).save();
 
-            await sendMail({
-                subject: "Verify Your Email",
-                to: newData.email,
-                text: `Hello ${newData.name}, Welcome to KeepPlus! We're excited to have you on board. Please verify your email address by clicking the link: https://keepplus.netlify.app/auth/verify/${token}. This link will expire in 24 hours. If you did not sign up for KeepPlus, please ignore this email.`,
-            });
-
-            return newData;
+            return [newUser, token];
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.logger.error(message);
@@ -75,10 +69,7 @@ export class UserRepository {
                 return false;
             }
 
-            await User.findOneAndUpdate(
-                { _id: user._id },
-                { $set: { isVerified: true }, $unset: { recoveryToken: "" } }
-            );
+            await User.findOneAndUpdate({ _id: user._id }, { $set: { isVerified: true } });
 
             return true;
         } catch (error) {
@@ -91,8 +82,10 @@ export class UserRepository {
     async loginUser(email: string | null, password: string | null, viaToken: boolean = false, token: string = ''): Promise<string | null> {
         try {
             if (viaToken) {
-                const decoded = jwt.decode(token) as { email?: string } | null;
-                const user = await User.findOne({ email: decoded?.email, sessionKey: token });
+                const decode = jwt.decode(token);
+                const user = await User.findOne({ email, sessionKey: token });
+
+                this.logger.log("Attempting login via token ", { decode, user, token });
 
                 if (user) {
                     const session = await this.createAndRefreshToken(user?.email);
@@ -105,7 +98,7 @@ export class UserRepository {
 
                 const user = await User.findOne({ email });
                 if (!user) {
-                    this.logger.log("User not found");
+                    this.logger.log("User not found", { email });
                     return null;
                 }
 
@@ -116,6 +109,7 @@ export class UserRepository {
                 }
 
                 const session = await this.createAndRefreshToken(user?.email);
+                this.logger.debug("Login success with credentials", { email });
                 return session;
             }
         } catch (error) {
@@ -136,10 +130,7 @@ export class UserRepository {
                 return false;
             }
 
-            await User.findOneAndUpdate(
-                { _id: user._id },
-                { $unset: { sessionKey: "" } }
-            );
+            await User.findOneAndUpdate({ _id: user._id }, { $unset: { sessionKey: "" } });
 
             return true;
         } catch (error) {
@@ -149,25 +140,18 @@ export class UserRepository {
         }
     }
 
-    async sendRecoveryLink(email: string): Promise<boolean | null> {
+    async sendRecoveryLink(email: string): Promise<[IUser | null, string | null]> {
         try {
             const user = await User.findOne({ email });
             if (!user) {
                 this.logger.log("User not found");
-                return null;
+                return [null, null];
             }
 
-            const options: SignOptions = { expiresIn: '1h' };
-            const recoveryToken = jwt.sign({ email: user.email }, config.jwt.secret, options);
-            await User.findOneAndUpdate({ _id: user._id }, { $set: { recoveryToken } });
+            const recoveryToken = this.createTokenViaEmail(email, '1h');
+            const data = await User.findOneAndUpdate({ _id: user._id }, { $set: { recoveryToken } }, { new: true });
 
-            const mail = await sendMail({
-                subject: "Password Recovery",
-                to: user.email,
-                text: `Click the link to reset your password: https://keepplus.netlify.app/auth/recover/${recoveryToken}. This link will auto expire in 1 hour. If you did not request a password reset, please ignore this email.`,
-            });
-
-            return mail ? true : false;
+            return [data, recoveryToken];
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.logger.error(message);
@@ -175,39 +159,29 @@ export class UserRepository {
         }
     }
 
-    async updatePassword(recoveryToken: string, newPassword: string): Promise<boolean> {
+    async updatePassword(recoveryToken: string, newPassword: string): Promise<IUser|null> {
         try {
             const decoded = jwt.decode(recoveryToken) as { email?: string } | null;
             const email = decoded?.email;
             if (!email) {
                 this.logger.log("Invalid recovery token");
-                return false;
+                return null;
             }
 
             const user = await User.findOne({ email, recoveryToken });
             if (!user) {
                 this.logger.log("User not found or invalid recovery token");
-                return false;
-            }
-
-            const mail = await sendMail({
-                subject: "Password Changed",
-                to: user.email,
-                text: `Your password has been successfully changed. If you did not perform this action, please contact support immediately.`,
-            });
-
-            if (!mail) {
-                this.logger.log("Failed to send confirmation email");
-                return false;
+                return null;
             }
 
             const hashedPassword = await bcrypt.hash(newPassword, 10);
             await User.findOneAndUpdate(
                 { _id: user._id },
-                { $set: { password: hashedPassword }, $unset: { recoveryToken: "" } }
+                { $set: { password: hashedPassword }, $unset: { recoveryToken: "" } },
+                { new: true }
             );
 
-            return true;
+            return user;
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.logger.error(message);
@@ -215,20 +189,22 @@ export class UserRepository {
         }
     }
 
-    async getUser(token: string): Promise<IUser | null> {
+    async getUser(token: string | null, email: string | null = null): Promise<[IUser | null, string | null]> {
         try {
-            const email = jwt.decode(token);
-            return await User.findOne({ email });
-        } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            this.logger.error(message);
-            throw error;
-        }
-    }
+            if (!token && (email ?? "")?.length > 0) {
+                const user = await User.findOne({ email })
+                return [user, null];
+            }
 
-    async getUserById(id: mongoose.Types.ObjectId): Promise<IUser | null> {
-        try {
-            return await User.findOne({ _id: id });
+            if (!email && (token ?? "")?.length > 0) {
+                const email = jwt.decode(token ?? "") as string;
+                const user = await User.findOne({ email });
+                const newToken = this.createTokenViaEmail(email);
+
+                return [user, newToken]
+            }
+
+            return [null, null];
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.logger.error(message);

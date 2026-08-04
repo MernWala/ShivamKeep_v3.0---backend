@@ -2,6 +2,7 @@ import { NextFunction, Request, Response } from "express";
 import { AppLogger } from "../util/AppLogger"
 import { UserRepository } from "../repository/UserRepository";
 import { config } from "../../config";
+import { sendMail } from "../util/NodemailerClient";
 
 export class UserController {
     private logger: AppLogger;
@@ -21,16 +22,31 @@ export class UserController {
     }
 
     private getTokenFromCookies(req: Request): string {
-        const { authToken } = req.cookies;
-        return authToken;
+        return req.cookies?.[config.cookie.name] || "";
+    }
+
+    private sendAuthTokenCookie(res: Response, token: string): void {
+        const isProduction = config.env === "production";
+
+        res.cookie(config.cookie.name, token, {
+            httpOnly: true,
+            secure: isProduction,
+            sameSite: isProduction ? "none" : "lax",
+            path: '/',
+            maxAge: 7 * 24 * 60 * 60 * 1000,
+        })
+    }
+
+    private clearCookieAuthToken(res: Response): void {
+        res.clearCookie(config.cookie.name, { path: '/' });
     }
 
     async manualRegister(req: Request, res: Response, _next: NextFunction) {
         try {
             const { email, name, password } = req.body;
-            const user = await this.repo.createUser(email, name, password);
+            const [user, token] = await this.repo.createUser(email, name, password);
 
-            if (!user) {
+            if (!user || !token) {
                 return this.returnType(res, {
                     status: 400,
                     data: null,
@@ -38,11 +54,65 @@ export class UserController {
                 });
             }
 
+            // Abstrating information
+            const { isVerified, picture, githubId } = user;
+
+            // Sending onbording email
+            await sendMail({
+                subject: "Verify Your Email",
+                to: user.email,
+                text: `Hello ${user.name}, Welcome to KeepPlus! We're excited to have you on board. Please verify your email address by clicking the link: ${config.frontendHost}/auth/verify/${token}. This link will expire in 24 hours. If you did not sign up for KeepPlus, please ignore this email.`,
+            });
+
             return this.returnType(res, {
                 status: 201,
-                data: user,
+                data: { user: { email, name, isVerified, picture, githubId } },
                 error: null,
             });
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.logger.error(message);
+            return this.returnType(res, {
+                status: 500,
+                data: null,
+                error: message,
+            });
+        }
+    }
+
+    async resendVerificationEmail(req: Request, res: Response, _next: NextFunction) {
+        try {
+            const { email } = req.body;
+            const [user, token] = await this.repo.getUser(null, email);
+
+            if (!user) {
+                return this.returnType(res, {
+                    status: 404,
+                    data: null,
+                    error: "User not found",
+                });
+            }
+
+            const mail = await sendMail({
+                subject: "Verify Your Email",
+                to: user.email,
+                text: `Hello ${user.name}, Welcome to KeepPlus! We're excited to have you on board. Please verify your email address by clicking the link: ${config.frontendHost}/auth/verify/${token}. This link will expire in 24 hours. If you did not sign up for KeepPlus, please ignore this email.`,
+            });
+
+            if (!mail) {
+                this.logger.log("Failed to send email for user: ", user);
+                return this.returnType(res, {
+                    status: 500,
+                    data: null,
+                    error: "Failed to send mail! Try again later.",
+                });
+            } else {
+                return this.returnType(res, {
+                    status: 200,
+                    data: { message: "Mail has been send! Verify account within 24 hrs" },
+                    error: null,
+                });
+            }
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.logger.error(message);
@@ -86,10 +156,11 @@ export class UserController {
     async manualLogin(req: Request, res: Response, _next: NextFunction) {
         try {
             const { email, password } = req.body;
-            const session = await this.repo.loginUser(email, password);
+            this.logger.debug("Attempting login", { email, password });
+            const session = await this.repo.loginUser(email, password, false, "");
 
             if (!session) {
-                res.clearCookie(config.cookie.name);
+                this.clearCookieAuthToken(res);
                 return this.returnType(res, {
                     status: 498,
                     data: null,
@@ -97,6 +168,7 @@ export class UserController {
                 });
             }
 
+            this.sendAuthTokenCookie(res, session);
             return this.returnType(res, {
                 status: 200,
                 data: { token: session },
@@ -119,13 +191,15 @@ export class UserController {
             const session = await this.repo.loginUser(null, null, true, token);
 
             if (!session) {
+                this.clearCookieAuthToken(res);
                 return this.returnType(res, {
-                    status: 401,
-                    data: null,
+                    status: 498,
+                    data: { message: "Token Expired! Login again with credentials" },
                     error: "Invalid token",
                 });
             }
 
+            this.sendAuthTokenCookie(res, session);
             return this.returnType(res, {
                 status: 200,
                 data: { token: session },
@@ -148,7 +222,7 @@ export class UserController {
             const isRemovedSession = await this.repo.logout(token);
 
             if (isRemovedSession) {
-                res.clearCookie(config.cookie.name);
+                this.clearCookieAuthToken(res);
                 return this.returnType(res, {
                     status: 200,
                     data: { success: true },
@@ -157,7 +231,7 @@ export class UserController {
             }
 
             return this.returnType(res, {
-                status: 400,
+                status: 500,
                 data: null,
                 error: "Logout failed",
             });
@@ -174,29 +248,36 @@ export class UserController {
 
     async sendRecoveryLink(req: Request, res: Response, _next: NextFunction) {
         try {
-
             const { email } = req.body;
-            const user = await this.repo.sendRecoveryLink(email);
+            const [user, token] = await this.repo.sendRecoveryLink(email);
 
-            if (user === null) {
+            if (!user) {
                 return this.returnType(res, {
                     status: 404,
                     data: null,
                     error: "User not found",
                 });
-            } else if (user === false) {
+            }
+
+            const mail = await sendMail({
+                subject: "Password Recovery",
+                to: user.email,
+                text: `Click the link to reset your password: ${config.frontendHost}/auth/recover/${token}. This link will auto expire in 1 hour. If you did not request a password reset, please ignore this email.`,
+            });
+
+            if (mail) {
+                return this.returnType(res, {
+                    status: 200,
+                    data: { success: true },
+                    error: null,
+                });
+            } else {
                 return this.returnType(res, {
                     status: 500,
                     data: null,
-                    error: "Failed to send recovery link",
+                    error: "Failed to send recovery mail.",
                 });
             }
-
-            return this.returnType(res, {
-                status: 200,
-                data: { success: true },
-                error: null,
-            });
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.logger.error(message);
@@ -207,18 +288,28 @@ export class UserController {
     async updatePassword(req: Request, res: Response, _next: NextFunction) {
         try {
             const { newPassowrd, recoveryToken } = req.body;
-            const isUpdated = await this.repo.updatePassword(recoveryToken, newPassowrd);
-            if (!isUpdated) {
+            const user = await this.repo.updatePassword(recoveryToken, newPassowrd);
+
+            if (!user) {
                 return this.returnType(res, {
                     status: 400,
                     data: null,
                     error: "Failed to update password",
                 });
             } else {
+                const mail = await sendMail({
+                    subject: "Password Changed",
+                    to: user.email,
+                    text: `Your password has been successfully changed. If you did not perform this action, please contact support immediately.`,
+                });
+
                 return this.returnType(res, {
                     status: 200,
-                    data: { success: true },
                     error: null,
+                    data: { 
+                        message: "Password has beeen updated",
+                        mail: mail ? "Information via mail has bee sent." : "Failed to update via email",
+                    },
                 });
             }
         } catch (error) {

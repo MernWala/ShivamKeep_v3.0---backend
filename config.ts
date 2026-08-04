@@ -24,6 +24,7 @@ const envSchma = z.object({
     MAIL_SERVICE_PASSWORD: z.string().min(1, "Mail service password is required"),
     PORT: z.coerce.number().default(3001),
     ENV: z.enum(['development', 'production', 'test']).default('development'),
+    FRONTEND_HOST: z.url().default("http://localhost:3000"),
 });
 
 const env = envSchma.parse({
@@ -39,6 +40,7 @@ const env = envSchma.parse({
     MAIL_SERVICE_PASSWORD: process.env.MAIL_SERVICE_PASSWORD,
     PORT: process.env.PORT,
     ENV: process.env.ENV,
+    FRONTEND_HOST: process.env.FRONTEND_HOST
 });
 
 export const config = {
@@ -47,6 +49,7 @@ export const config = {
     port: env.PORT,
     env: env.ENV,
     seed: env.SEED_DATABASE,
+    frontendHost: env.FRONTEND_HOST,
     hash: {
         round: env.BCRYPT_SALT_ROUNDS,
     },

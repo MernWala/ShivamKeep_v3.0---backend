@@ -1,7 +1,8 @@
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { config } from "./config"
-import { authRoutes } from "./src/routes/auth";
+import { authRoutes } from "./src/routes/user";
 import { notesRoutes } from "./src/routes/notes";
 import { requestLogger } from './src/middleware/RequestLogger';
 import { databaseConnection } from "./src/util/DatabaseConnection";
@@ -15,6 +16,7 @@ app.use(helmet());
 app.use(requestLogger);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
 // =============================================== CORS setup ===============================================
 const corsOptions = {
@@ -33,8 +35,8 @@ const corsOptions = {
 app.use(cors(corsOptions));
 // =============================================================================================================
 
-app.use("/api/user", authRoutes);
-app.use("/api/notes", notesRoutes);
+app.use("/api/auth", authRoutes());
+app.use("/api/notes", notesRoutes());
 
 app.get('/', (req: Request, res: Response) => {
     res.json({ status: 'ok', message: 'Server is active' });

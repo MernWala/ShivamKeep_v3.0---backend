@@ -1,4 +1,3 @@
-import { buildCheckFunction } from "express-validator";
 import nodemailer from "nodemailer";
 import { AppLogger } from "./AppLogger";
 import { config } from "../../config";
