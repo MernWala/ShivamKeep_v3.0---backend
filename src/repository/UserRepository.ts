@@ -82,10 +82,10 @@ export class UserRepository {
     async loginUser(email: string | null, password: string | null, viaToken: boolean = false, token: string = ''): Promise<string | null> {
         try {
             if (viaToken) {
-                const decode = jwt.decode(token);
-                const user = await User.findOne({ email, sessionKey: token });
+                const decode = jwt.decode(token) as { email: string };
+                const user = await User.findOne({ email: decode?.email, sessionKey: token });
 
-                this.logger.log("Attempting login via token ", { decode, user, token });
+                this.logger.log("Attempting login via token ", { decode, user: user?.name });
 
                 if (user) {
                     const session = await this.createAndRefreshToken(user?.email);
@@ -159,7 +159,7 @@ export class UserRepository {
         }
     }
 
-    async updatePassword(recoveryToken: string, newPassword: string): Promise<IUser|null> {
+    async updatePassword(recoveryToken: string, newPassword: string): Promise<IUser | null> {
         try {
             const decoded = jwt.decode(recoveryToken) as { email?: string } | null;
             const email = decoded?.email;
@@ -205,6 +205,16 @@ export class UserRepository {
             }
 
             return [null, null];
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.logger.error(message);
+            throw error;
+        }
+    }
+
+    async clearSession(token: string): Promise<void> {
+        try {
+            await User.findByIdAndUpdate({ sessionKey: token }, { $unset: { sessionKey: "" } });
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.logger.error(message);

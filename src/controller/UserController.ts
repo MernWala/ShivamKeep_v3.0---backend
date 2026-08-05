@@ -192,6 +192,7 @@ export class UserController {
 
             if (!session) {
                 this.clearCookieAuthToken(res);
+                await this.repo.clearSession(token);
                 return this.returnType(res, {
                     status: 498,
                     data: { message: "Token Expired! Login again with credentials" },
