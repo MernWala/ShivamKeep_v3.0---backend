@@ -5,7 +5,7 @@ export interface IUser {
     name: string;
     email: string;
     password: string;
-    picture: string;
+    picture: Buffer;
     isVerified: boolean;
     recoveryToken?: string | null;
     githubId?: string | null;
@@ -18,7 +18,7 @@ const UserSchema = new Schema({
     name: { type: String, required: true },
     email: { type: String, required: true },
     password: { type: String, required: true },
-    picture: { type: String, default: '' },
+    picture: { type: Buffer, required: false },
     isVerified: { type: Boolean, default: false },
     recoveryToken: { type: String, default: null },
     githubId: { type: String, default: null },

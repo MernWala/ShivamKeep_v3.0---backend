@@ -168,10 +168,20 @@ export class UserController {
                 });
             }
 
+            const user = await this.repo.getUserByEmail(email);
+            const userPayload = user ? {
+                _id: user._id,
+                name: user.name,
+                email: user.email,
+                isVerified: user.isVerified,
+                picture: user.picture,
+                githubId: user.githubId,
+            } : null;
+
             this.sendAuthTokenCookie(res, session);
             return this.returnType(res, {
                 status: 200,
-                data: { token: session },
+                data: { token: session, user: userPayload },
                 error: null,
             });
         } catch (error) {
@@ -188,9 +198,10 @@ export class UserController {
     async loginViaToken(req: Request, res: Response, _next: NextFunction) {
         try {
             const token = this.getTokenFromCookies(req);
+            const user = await this.repo.getUserByToken(token);
             const session = await this.repo.loginUser(null, null, true, token);
 
-            if (!session) {
+            if (!session || !user) {
                 this.clearCookieAuthToken(res);
                 await this.repo.clearSession(token);
                 return this.returnType(res, {
@@ -200,10 +211,19 @@ export class UserController {
                 });
             }
 
+            const userPayload = {
+                _id: user._id,
+                name: user.name,
+                email: user.email,
+                isVerified: user.isVerified,
+                picture: user.picture,
+                githubId: user.githubId,
+            };
+
             this.sendAuthTokenCookie(res, session);
             return this.returnType(res, {
                 status: 200,
-                data: { token: session },
+                data: { token: session, user: userPayload },
                 error: null,
             });
         } catch (error) {
@@ -307,12 +327,39 @@ export class UserController {
                 return this.returnType(res, {
                     status: 200,
                     error: null,
-                    data: { 
+                    data: {
                         message: "Password has beeen updated",
                         mail: mail ? "Information via mail has bee sent." : "Failed to update via email",
                     },
                 });
             }
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.logger.error(message);
+            throw error;
+        }
+    }
+
+    async updateProfile(req: Request, res: Response, _next: NextFunction) {
+        try {
+            const { id } = req.params as { id: string };
+            const token = this.getTokenFromCookies(req);
+            const { pictureBuffer } = req.body as { pictureBuffer: Buffer };
+
+            const isUpdated = await this.repo.UpdateProfile(id, token, pictureBuffer);
+            if (!isUpdated) {
+                return this.returnType(res, {
+                    status: 400,
+                    data: null,
+                    error: "Profile not updated",
+                });
+            }
+
+            return this.returnType(res, {
+                status: 200,
+                data: { message: "Profile has been updated" },
+                error: null
+            });
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.logger.error(message);
