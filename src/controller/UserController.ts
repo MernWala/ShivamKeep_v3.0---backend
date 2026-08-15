@@ -342,12 +342,11 @@ export class UserController {
 
     async updateProfile(req: Request, res: Response, _next: NextFunction) {
         try {
-            const { id } = req.params as { id: string };
             const token = this.getTokenFromCookies(req);
             const { pictureBuffer } = req.body as { pictureBuffer: Buffer };
 
-            const isUpdated = await this.repo.UpdateProfile(id, token, pictureBuffer);
-            if (!isUpdated) {
+            const update = await this.repo.UpdateProfile(token, pictureBuffer);
+            if (!update) {
                 return this.returnType(res, {
                     status: 400,
                     data: null,
@@ -357,7 +356,17 @@ export class UserController {
 
             return this.returnType(res, {
                 status: 200,
-                data: { message: "Profile has been updated" },
+                data: {
+                    token,
+                    user: {
+                        _id: update?._id,
+                        name: update?.name,
+                        email: update?.email,
+                        isVerified: update?.isVerified,
+                        picture: update?.picture,
+                        githubId: update?.githubId,
+                    }
+                },
                 error: null
             });
         } catch (error) {

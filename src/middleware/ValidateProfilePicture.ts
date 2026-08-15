@@ -1,27 +1,15 @@
 import { Request, Response, NextFunction } from 'express';
 
-const MAX_PICTURE_BYTES = 2 * 1024; // 2KB
+const MAX_PICTURE_BYTES = 20 * 1024; // 20KB
 
 export function validateProfilePicture(req: Request, res: Response, next: NextFunction) {
-    const { picture } = req.body as { picture?: string };
+    // express.raw() puts the parsed binary buffer directly on req.body
+    const buffer = req.body as Buffer;
 
-    if (!picture) {
+    if (!buffer || !Buffer.isBuffer(buffer) || buffer.length === 0) {
         return res.status(400).json({
             data: null,
-            error: 'picture is required',
-            status: 400,
-        });
-    }
-
-    // Strip data URL prefix if present, e.g. "data:image/jpeg;base64,...."
-    const base64Data = picture.includes(',') ? picture.split(',')[1] : picture;
-    let buffer: Buffer;
-    try {
-        buffer = Buffer.from(base64Data, 'base64');
-    } catch {
-        return res.status(400).json({
-            data: null,
-            error: 'picture must be valid base64',
+            error: 'picture binary blob is required',
             status: 400,
         });
     }
@@ -29,11 +17,12 @@ export function validateProfilePicture(req: Request, res: Response, next: NextFu
     if (buffer.length > MAX_PICTURE_BYTES) {
         return res.status(400).json({
             data: null,
-            error: `picture exceeds max size of ${MAX_PICTURE_BYTES} bytes (received ${buffer.length} bytes)`,
+            error: `picture exceeds max size of ${MAX_PICTURE_BYTES / 1024}KB (received ${(buffer.length / 1024).toFixed(1)}KB)`,
             status: 400,
         });
     }
 
+    // Attach buffer to request for clean controller access
     req.body.pictureBuffer = buffer;
     next();
 }

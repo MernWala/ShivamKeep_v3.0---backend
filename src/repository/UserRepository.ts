@@ -294,15 +294,15 @@ export class UserRepository {
         }
     }
 
-    async UpdateProfile(id: string, token: string, buffer: Buffer): Promise<boolean> {
+    async UpdateProfile(token: string, buffer: Buffer): Promise<IUser | null> {
         try {
             const user = await this.getUserByToken(token);
-            if (user && user?._id && String(user._id) === id) {
-                await User.findByIdAndUpdate(user?._id, { $set: { picture: buffer } });
-                return true;
+            if (user) {
+                const updatedUser = await User.findByIdAndUpdate(user?._id, { $set: { picture: buffer } }, { new: true });
+                return updatedUser;
             }
 
-            return false;
+            return null;
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.logger.error(message);
