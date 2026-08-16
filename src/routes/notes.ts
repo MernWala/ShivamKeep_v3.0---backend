@@ -7,9 +7,10 @@ export function notesRoutes() {
 
     router.post("/", controller.createNote.bind(controller));
     router.get("/", controller.readNote.bind(controller));
+    router.get("/shared", controller.getSharedNotes.bind(controller));
     router.put("/", controller.updateNote.bind(controller));
-    router.delete("/", controller.deleteNote.bind(controller));
-    router.patch("/", controller.toggleShare.bind(controller));
+    router.delete("/:id", controller.deleteNote.bind(controller));
+    router.patch("/:id", controller.toggleShare.bind(controller));
 
     return router;
 };

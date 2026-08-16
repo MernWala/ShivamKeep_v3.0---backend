@@ -1,28 +1,22 @@
 import mongoose from "mongoose";
 import Notes, { INotes } from "../models/Notes";
 import { AppLogger } from "../util/AppLogger"
-import jwt from "jsonwebtoken";
-import { UserRepository } from "./UserRepository";
-
+import { databaseConnection } from "../util/DatabaseConnection";
 export class NotesRepository {
     private logger: AppLogger;
-    private userRepo: UserRepository;
 
     constructor() {
         this.logger = new AppLogger("NotesRepository");
-        this.userRepo = new UserRepository();
     }
 
-    async createNote(token: string, notes: string, title: string, tags: string[], shared: boolean = false): Promise<INotes | null> {
+    private buildNoteFilter(userId: mongoose.Types.ObjectId | string, noteId?: mongoose.Types.ObjectId | string) {
+        return noteId ? { _id: noteId, user: userId } : { user: userId };
+    }
+
+    async createNote(userId: mongoose.Types.ObjectId | string, notes: string, title: string, tags: string[], shared: boolean = false): Promise<INotes | null> {
         try {
-            const user = await this.userRepo.getUser(token);
-            if (!user) {
-                this.logger.log("User not found");
-                return null;
-            }
-
-            const note = await new Notes({ notes, title, tags, shared, user: user?._id }).save();
-
+            await databaseConnection.ensureConnection()
+            const note = await new Notes({ notes, title, tags, shared, user: userId }).save();
             return note;
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
@@ -31,15 +25,10 @@ export class NotesRepository {
         }
     }
 
-    async readNotes(token: string): Promise<INotes[] | []> {
+    async readNotes(userId: mongoose.Types.ObjectId | string): Promise<INotes[] | []> {
         try {
-            const user = await this.userRepo.getUser(token);
-            if (!user) {
-                this.logger.log("User not found");
-                return [];
-            }
-
-            return await Notes.find({ user: user._id });
+            await databaseConnection.ensureConnection()
+            return await Notes.find(this.buildNoteFilter(userId));
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.logger.error(message);
@@ -47,17 +36,11 @@ export class NotesRepository {
         }
     }
 
-    async updateNote(token: string, noteId: mongoose.Types.ObjectId, notes: string, title: string, tags: string[], shared: boolean): Promise<INotes | null> {
+    async updateNote(userId: mongoose.Types.ObjectId | string, noteId: mongoose.Types.ObjectId | string, notes: string, title: string, tags: string[], shared: boolean): Promise<INotes | null> {
         try {
-
-            const user = await this.userRepo.getUser(token);
-            if (!user) {
-                this.logger.log("User not found");
-                return null;
-            }
-
+            await databaseConnection.ensureConnection()
             const note = await Notes.findOneAndUpdate(
-                { _id: noteId, user: user._id },
+                this.buildNoteFilter(userId, noteId),
                 { notes, title, tags, shared },
                 { new: true }
             );
@@ -71,15 +54,10 @@ export class NotesRepository {
         }
     }
 
-    async deleteNote(token: string, noteId: mongoose.Types.ObjectId): Promise<boolean> {
+    async deleteNote(userId: mongoose.Types.ObjectId | string, noteId: mongoose.Types.ObjectId | string): Promise<boolean> {
         try {
-            const user = await this.userRepo.getUser(token);
-            if (!user) {
-                this.logger.log("User not found");
-                return false;
-            }
-
-            const note = await Notes.findOneAndDelete({ _id: noteId, user: user._id });
+            await databaseConnection.ensureConnection()
+            const note = await Notes.findOneAndDelete(this.buildNoteFilter(userId, noteId));
             if (!note) {
                 this.logger.log("Note not found");
                 return false;
@@ -93,17 +71,27 @@ export class NotesRepository {
         }
     }
 
-    async getShared(userId: mongoose.Types.ObjectId): Promise<INotes[] | []> {
+    async toggleShare(userId: mongoose.Types.ObjectId | string, noteId: mongoose.Types.ObjectId | string): Promise<INotes | null> {
         try {
+            await databaseConnection.ensureConnection()
+            const note = await Notes.findOneAndUpdate(
+                this.buildNoteFilter(userId, noteId),
+                [{ $set: { shared: { $not: "$shared" } } }],
+                { new: true }
+            );
 
-            const user = await this.userRepo.getUserById(userId);
-            if (!user) {
-                this.logger.log("User not found");
-                return [];
-            }
+            return note;
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.logger.error(message);
+            throw error;
+        }
+    }
 
+    async getShared(userId: mongoose.Types.ObjectId | string): Promise<INotes[] | []> {
+        try {
+            await databaseConnection.ensureConnection()
             const notes = await Notes.find({ user: userId, shared: true });
-
             return notes ?? [];
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);

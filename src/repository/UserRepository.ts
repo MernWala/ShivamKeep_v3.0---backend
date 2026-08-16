@@ -3,6 +3,7 @@ import User, { IUser } from "../models/User";
 import bcrypt from "bcryptjs";
 import jwt, { type SignOptions } from "jsonwebtoken";
 import { config } from "../../config";
+import { databaseConnection } from "../util/DatabaseConnection";
 
 export class UserRepository {
     private logger: AppLogger;
@@ -11,11 +12,34 @@ export class UserRepository {
         this.logger = new AppLogger("UserRepository");
     }
 
+    private async findUserByEmail(email: string): Promise<IUser | null> {
+        await databaseConnection.ensureConnection();
+        return await User.findOne({ email });
+    }
+
+    private async findUserBySessionToken(token: string): Promise<IUser | null> {
+        await databaseConnection.ensureConnection();
+        return await User.findOne({ sessionKey: token });
+    }
+
+    private verifyToken(token: string): { email?: string } | null {
+        try {
+            return jwt.verify(token, config.jwt.secret) as { email?: string } | null;
+        } catch {
+            return null;
+        }
+    }
+
+    private async refreshSession(email: string): Promise<string> {
+        const token = this.createTokenViaEmail(email);
+        await databaseConnection.ensureConnection();
+        await User.findOneAndUpdate({ email }, { $set: { sessionKey: token } });
+        return token;
+    }
+
     private async createAndRefreshToken(email: string): Promise<string> {
         try {
-            const token = this.createTokenViaEmail(email);
-            await User.findOneAndUpdate({ email }, { $set: { sessionKey: token } });
-            return token;
+            return await this.refreshSession(email);
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.logger.error(message);
@@ -30,6 +54,8 @@ export class UserRepository {
 
     async createUser(email: string, name: string, password: string): Promise<[IUser | null, string | null]> {
         try {
+            await databaseConnection.ensureConnection();
+
             const data = await User.findOne({ email });
             if (data) {
                 this.logger.log("User already exist");
@@ -56,6 +82,8 @@ export class UserRepository {
 
     async verifyEmail(token: string): Promise<boolean> {
         try {
+            await databaseConnection.ensureConnection();
+
             const decoded = jwt.decode(token) as { email?: string } | null;
             const email = decoded?.email;
             if (!email) {
@@ -81,22 +109,28 @@ export class UserRepository {
 
     async loginUser(email: string | null, password: string | null, viaToken: boolean = false, token: string = ''): Promise<string | null> {
         try {
-            if (viaToken) {
-                const decode = jwt.decode(token);
-                const user = await User.findOne({ email, sessionKey: token });
+            await databaseConnection.ensureConnection();
 
-                this.logger.log("Attempting login via token ", { decode, user, token });
+            if (viaToken) {
+                if (!token) return null;
+                const decoded = this.verifyToken(token);
+                const emailFromToken = decoded?.email;
+                if (!emailFromToken) {
+                    return null;
+                }
+
+                const user = await this.findUserBySessionToken(token);
+                this.logger.debug("Attempting login via token", { email: emailFromToken, user: user?.name });
 
                 if (user) {
-                    const session = await this.createAndRefreshToken(user?.email);
-                    return session;
+                    return await this.refreshSession(user.email);
                 }
 
                 return null;
             } else {
                 if (!email || !password) return null;
 
-                const user = await User.findOne({ email });
+                const user = await this.findUserByEmail(email);
                 if (!user) {
                     this.logger.log("User not found", { email });
                     return null;
@@ -108,7 +142,7 @@ export class UserRepository {
                     return null;
                 }
 
-                const session = await this.createAndRefreshToken(user?.email);
+                const session = await this.refreshSession(user.email);
                 this.logger.debug("Login success with credentials", { email });
                 return session;
             }
@@ -121,17 +155,19 @@ export class UserRepository {
 
     async logout(token: string): Promise<boolean> {
         try {
-            const decodedToken = jwt.decode(token) as { email?: string } | null;
-            const email = decodedToken?.email;
-            const user = await User.findOne({ email });
+            await databaseConnection.ensureConnection();
 
+            if (!token) {
+                return false;
+            }
+
+            const user = await this.findUserBySessionToken(token);
             if (!user) {
                 this.logger.log("User not found");
                 return false;
             }
 
             await User.findOneAndUpdate({ _id: user._id }, { $unset: { sessionKey: "" } });
-
             return true;
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
@@ -142,6 +178,8 @@ export class UserRepository {
 
     async sendRecoveryLink(email: string): Promise<[IUser | null, string | null]> {
         try {
+            await databaseConnection.ensureConnection();
+
             const user = await User.findOne({ email });
             if (!user) {
                 this.logger.log("User not found");
@@ -159,10 +197,13 @@ export class UserRepository {
         }
     }
 
-    async updatePassword(recoveryToken: string, newPassword: string): Promise<IUser|null> {
+    async updatePassword(recoveryToken: string, newPassword: string): Promise<IUser | null> {
         try {
+            await databaseConnection.ensureConnection();
+
             const decoded = jwt.decode(recoveryToken) as { email?: string } | null;
             const email = decoded?.email;
+            console.log({ decoded, email, recoveryToken });
             if (!email) {
                 this.logger.log("Invalid recovery token");
                 return null;
@@ -191,20 +232,78 @@ export class UserRepository {
 
     async getUser(token: string | null, email: string | null = null): Promise<[IUser | null, string | null]> {
         try {
+            await databaseConnection.ensureConnection();
+
             if (!token && (email ?? "")?.length > 0) {
-                const user = await User.findOne({ email })
+                const emailString = email ?? "";
+                const user = await this.getUserByEmail(emailString);
                 return [user, null];
             }
 
             if (!email && (token ?? "")?.length > 0) {
-                const email = jwt.decode(token ?? "") as string;
-                const user = await User.findOne({ email });
-                const newToken = this.createTokenViaEmail(email);
-
-                return [user, newToken]
+                const tokenString = token ?? "";
+                const user = await this.getUserByToken(tokenString);
+                return [user, tokenString];
             }
 
             return [null, null];
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.logger.error(message);
+            throw error;
+        }
+    }
+
+    async getUserByEmail(email: string): Promise<IUser | null> {
+        try {
+            await databaseConnection.ensureConnection();
+
+            return await this.findUserByEmail(email);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.logger.error(message);
+            throw error;
+        }
+    }
+
+    async getUserByToken(token: string): Promise<IUser | null> {
+        try {
+            await databaseConnection.ensureConnection();
+
+            if (!token) return null;
+            const decoded = this.verifyToken(token);
+            const email = decoded?.email;
+            if (!email) return null;
+            const user = await this.findUserBySessionToken(token);
+            return user;
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.logger.error(message);
+            throw error;
+        }
+    }
+
+    async clearSession(token: string): Promise<void> {
+        try {
+            await databaseConnection.ensureConnection();
+
+            await User.findOneAndUpdate({ sessionKey: token }, { $unset: { sessionKey: "" } });
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.logger.error(message);
+            throw error;
+        }
+    }
+
+    async UpdateProfile(token: string, buffer: Buffer): Promise<IUser | null> {
+        try {
+            const user = await this.getUserByToken(token);
+            if (user) {
+                const updatedUser = await User.findByIdAndUpdate(user?._id, { $set: { picture: buffer } }, { new: true });
+                return updatedUser;
+            }
+
+            return null;
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.logger.error(message);
