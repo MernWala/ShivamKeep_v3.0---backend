@@ -18,7 +18,7 @@ export function authRoutes() {
     router.post("/login", controller.manualLogin.bind(controller));
     router.get("/login-token", controller.loginViaToken.bind(controller));
     router.get("/logout", controller.logout.bind(controller));
-    router.get("/recover", controller.sendRecoveryLink.bind(controller));
+    router.post("/recover", controller.sendRecoveryLink.bind(controller));
     router.post("/update-password", controller.updatePassword.bind(controller));
 
     return router;

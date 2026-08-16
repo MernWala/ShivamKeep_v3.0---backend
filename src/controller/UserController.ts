@@ -289,13 +289,13 @@ export class UserController {
             if (mail) {
                 return this.returnType(res, {
                     status: 200,
-                    data: { success: true },
+                    data: { success: true, message: "Link sent to registered email" },
                     error: null,
                 });
             } else {
                 return this.returnType(res, {
                     status: 500,
-                    data: null,
+                    data: { success: false, message: "Failed to generate link" },
                     error: "Failed to send recovery mail.",
                 });
             }

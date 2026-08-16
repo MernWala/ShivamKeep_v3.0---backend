@@ -203,6 +203,7 @@ export class UserRepository {
 
             const decoded = jwt.decode(recoveryToken) as { email?: string } | null;
             const email = decoded?.email;
+            console.log({ decoded, email, recoveryToken });
             if (!email) {
                 this.logger.log("Invalid recovery token");
                 return null;
