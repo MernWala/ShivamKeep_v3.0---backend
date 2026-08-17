@@ -26,19 +26,21 @@ export class UserController {
     }
 
     private sendAuthTokenCookie(res: Response, token: string): void {
-        const isProduction = config.env === "production";
-
         res.cookie(config.cookie.name, token, {
             httpOnly: true,
-            secure: isProduction,
-            sameSite: isProduction ? "none" : "lax",
+            secure: true,
+            sameSite: "none",
             path: '/',
             maxAge: 7 * 24 * 60 * 60 * 1000,
         })
     }
 
     private clearCookieAuthToken(res: Response): void {
-        res.clearCookie(config.cookie.name, { path: '/' });
+        res.clearCookie(config.cookie.name, {
+            path: '/',
+            secure: true,
+            sameSite: "none",
+        });
     }
 
     async manualRegister(req: Request, res: Response, _next: NextFunction) {
